@@ -1,11 +1,12 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Code, LogOut, Plus, User } from 'lucide-react';
 
 const Header: React.FC = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSignOut = async () => {
     try {
@@ -15,6 +16,19 @@ const Header: React.FC = () => {
       console.error('Error signing out:', error);
     }
   };
+
+  const isActive = (path: string) => {
+    if (path === '/' && location.pathname === '/') return true;
+    if (path !== '/' && location.pathname.startsWith(path)) return true;
+    return false;
+  };
+
+  const navLinkClass = (path: string) => 
+    `transition-colors ${
+      isActive(path) 
+        ? 'text-blue-600 font-semibold border-b-2 border-blue-600 pb-1' 
+        : 'text-gray-700 hover:text-blue-600'
+    }`;
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
@@ -27,13 +41,13 @@ const Header: React.FC = () => {
           </Link>
 
           <nav className="hidden md:flex items-center space-x-8">
-            <Link to="/" className="text-gray-700 hover:text-blue-600 transition-colors">
+            <Link to="/" className={navLinkClass('/')}>
               Experiences
             </Link>
-            <Link to="/companies" className="text-gray-700 hover:text-blue-600 transition-colors">
+            <Link to="/companies" className={navLinkClass('/companies')}>
               Companies
             </Link>
-            <Link to="/questions" className="text-gray-700 hover:text-blue-600 transition-colors">
+            <Link to="/questions" className={navLinkClass('/questions')}>
               Questions
             </Link>
             {user && (

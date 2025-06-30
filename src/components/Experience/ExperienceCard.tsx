@@ -100,7 +100,9 @@ const ExperienceCard: React.FC<ExperienceCardProps> = ({ experience, onClick }) 
           <User className="w-4 h-4 text-gray-600" />
         </div>
         <div>
-          <p className="text-sm font-medium text-gray-900">{experience.user.full_name}</p>
+          <p className="text-sm font-medium text-gray-900">
+            {experience.user.full_name === 'Anonymous' ? 'Anonymous' : experience.user.full_name}
+          </p>
           <p className="text-xs text-gray-500">
             {experience.experience_years ? `${experience.experience_years} Years` : 'Fresher'} • {format(new Date(experience.interview_date), 'MMM yyyy')} • {experience.position} at {experience.company.name}
           </p>

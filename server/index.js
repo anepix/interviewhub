@@ -12,6 +12,7 @@ import experienceRoutes from './routes/experiences.js';
 import companyRoutes from './routes/companies.js';
 import userRoutes from './routes/users.js';
 import questionRoutes from './routes/questions.js';
+import analyticsRoutes from './routes/analytics.js';
 
 dotenv.config();
 
@@ -74,6 +75,7 @@ app.use('/api/experiences', experienceRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/questions', questionRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -86,6 +88,7 @@ app.get('/', (req, res) => {
       companies: '/api/companies',
       users: '/api/users',
       questions: '/api/questions',
+      analytics: '/api/analytics',
       health: '/health'
     }
   });

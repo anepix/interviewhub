@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../lib/api';
 import { Company } from '../../types/database';
-import { Plus, Minus, Building, Calendar, User, FileText, Star, DollarSign, CheckCircle, Sparkles, Search, X } from 'lucide-react';
+import { Plus, Minus, Building, Calendar, User, FileText, Star, DollarSign, CheckCircle, Sparkles, Search, X, EyeOff, Eye } from 'lucide-react';
 import AddCompanyModal from '../Company/AddCompanyModal';
 
 interface Round {
@@ -46,6 +46,7 @@ const ShareExperience: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
   const [formData, setFormData] = useState({
     company_id: '',
@@ -60,6 +61,7 @@ const ShareExperience: React.FC = () => {
     preparation_time: '',
     advice: '',
     salary_offered: '',
+    is_anonymous: false,
   });
 
   const [rounds, setRounds] = useState<Round[]>([
@@ -248,6 +250,56 @@ const ShareExperience: React.FC = () => {
     ));
   };
 
+  const addTopic = (roundIndex: number, questionIndex: number) => {
+    setRounds(prev => prev.map((round, i) => 
+      i === roundIndex 
+        ? {
+            ...round,
+            coding_questions: round.coding_questions.map((question, j) => 
+              j === questionIndex 
+                ? { ...question, topics: [...question.topics, ''] }
+                : question
+            )
+          }
+        : round
+    ));
+  };
+
+  const removeTopic = (roundIndex: number, questionIndex: number, topicIndex: number) => {
+    setRounds(prev => prev.map((round, i) => 
+      i === roundIndex 
+        ? {
+            ...round,
+            coding_questions: round.coding_questions.map((question, j) => 
+              j === questionIndex 
+                ? { ...question, topics: question.topics.filter((_, k) => k !== topicIndex) }
+                : question
+            )
+          }
+        : round
+    ));
+  };
+
+  const updateTopic = (roundIndex: number, questionIndex: number, topicIndex: number, value: string) => {
+    setRounds(prev => prev.map((round, i) => 
+      i === roundIndex 
+        ? {
+            ...round,
+            coding_questions: round.coding_questions.map((question, j) => 
+              j === questionIndex 
+                ? {
+                    ...question,
+                    topics: question.topics.map((topic, k) => 
+                      k === topicIndex ? value : topic
+                    )
+                  }
+                : question
+            )
+          }
+        : round
+    ));
+  };
+
   const addPlatformLink = (roundIndex: number, questionIndex: number) => {
     const newLink: PlatformLink = {
       platform: 'leetcode',
@@ -337,6 +389,7 @@ const ShareExperience: React.FC = () => {
       // Make actual API call to submit the experience
       const response = await api.post('/experiences', {
         ...formData,
+        is_anonymous: isAnonymous,
         rounds
       });
       
@@ -368,6 +421,24 @@ const ShareExperience: React.FC = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
+  };
+
+  // Company logos mapping for fallback
+  const getCompanyLogo = (companyName: string) => {
+    const logoMap: { [key: string]: string } = {
+      'Google': 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Google_2015_logo.svg/272px-Google_2015_logo.svg.png',
+      'Microsoft': 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/512px-Microsoft_logo.svg.png',
+      'Amazon': 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Amazon_logo.svg/603px-Amazon_logo.svg.png',
+      'Meta': 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Meta_Platforms_Inc._logo.svg/512px-Meta_Platforms_Inc._logo.svg.png',
+      'Apple': 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/488px-Apple_logo_black.svg.png',
+      'Netflix': 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Netflix_2015_logo.svg/512px-Netflix_2015_logo.svg.png',
+      'Uber': 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/Uber_logo_2018.svg/512px-Uber_logo_2018.svg.png',
+      'Airbnb': 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Airbnb_Logo_Bélo.svg/512px-Airbnb_Logo_Bélo.svg.png',
+      'Spotify': 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/512px-Spotify_logo_without_text.svg.png',
+      'Adobe': 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Adobe_Systems_logo_and_wordmark.svg/512px-Adobe_Systems_logo_and_wordmark.svg.png',
+      'Flipkart': 'https://logos-world.net/wp-content/uploads/2020/11/Flipkart-Logo.png'
+    };
+    return logoMap[companyName] || null;
   };
 
   if (!user) {
@@ -403,6 +474,37 @@ const ShareExperience: React.FC = () => {
       <div className="text-center">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Share Your Interview Experience</h1>
         <p className="text-gray-600">Help fellow students by sharing your interview journey</p>
+      </div>
+
+      {/* Anonymous Toggle */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            {isAnonymous ? <EyeOff className="w-5 h-5 text-gray-600" /> : <Eye className="w-5 h-5 text-gray-600" />}
+            <div>
+              <h3 className="text-lg font-medium text-gray-900">Share Anonymously</h3>
+              <p className="text-sm text-gray-600">
+                {isAnonymous 
+                  ? 'Your name will be hidden and shown as "Anonymous"' 
+                  : 'Your name will be visible to other users'
+                }
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAnonymous(!isAnonymous)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              isAnonymous ? 'bg-blue-600' : 'bg-gray-200'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                isAnonymous ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
       </div>
 
       {/* Progress Indicator */}
@@ -477,32 +579,39 @@ const ShareExperience: React.FC = () => {
                   {showCompanyDropdown && (
                     <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                       {filteredCompanies.length > 0 ? (
-                        filteredCompanies.map((company) => (
-                          <button
-                            key={company.id}
-                            type="button"
-                            onClick={() => handleCompanySelect(company)}
-                            className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center space-x-3 border-b border-gray-100 last:border-b-0"
-                          >
-                            <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
-                              {company.logo_url ? (
-                                <img
-                                  src={company.logo_url}
-                                  alt={company.name}
-                                  className="w-6 h-6 object-contain"
-                                />
-                              ) : (
-                                <Building className="w-4 h-4 text-gray-500" />
-                              )}
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-900">{company.name}</p>
-                              {company.industry && (
-                                <p className="text-sm text-gray-500">{company.industry}</p>
-                              )}
-                            </div>
-                          </button>
-                        ))
+                        filteredCompanies.map((company) => {
+                          const logoUrl = company.logo_url || getCompanyLogo(company.name);
+                          return (
+                            <button
+                              key={company.id}
+                              type="button"
+                              onClick={() => handleCompanySelect(company)}
+                              className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center space-x-3 border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
+                                {logoUrl ? (
+                                  <img
+                                    src={logoUrl}
+                                    alt={company.name}
+                                    className="w-6 h-6 object-contain"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      target.style.display = 'none';
+                                      target.nextElementSibling?.classList.remove('hidden');
+                                    }}
+                                  />
+                                ) : null}
+                                <Building className={`w-4 h-4 text-gray-500 ${logoUrl ? 'hidden' : ''}`} />
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900">{company.name}</p>
+                                {company.industry && (
+                                  <p className="text-sm text-gray-500">{company.industry}</p>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })
                       ) : companySearch.trim() ? (
                         <div className="p-4 text-center">
                           <p className="text-gray-500 mb-3">No companies found for "{companySearch}"</p>
@@ -526,16 +635,20 @@ const ShareExperience: React.FC = () => {
                   {selectedCompany && (
                     <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                       <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-white rounded flex items-center justify-center">
-                          {selectedCompany.logo_url ? (
+                        <div className="w-10 h-10 bg-white rounded flex items-center justify-center overflow-hidden">
+                          {(selectedCompany.logo_url || getCompanyLogo(selectedCompany.name)) ? (
                             <img
-                              src={selectedCompany.logo_url}
+                              src={selectedCompany.logo_url || getCompanyLogo(selectedCompany.name)!}
                               alt={selectedCompany.name}
                               className="w-8 h-8 object-contain"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                target.nextElementSibling?.classList.remove('hidden');
+                              }}
                             />
-                          ) : (
-                            <Building className="w-5 h-5 text-gray-500" />
-                          )}
+                          ) : null}
+                          <Building className={`w-5 h-5 text-gray-500 ${(selectedCompany.logo_url || getCompanyLogo(selectedCompany.name)) ? 'hidden' : ''}`} />
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{selectedCompany.name}</p>
@@ -910,17 +1023,44 @@ const ShareExperience: React.FC = () => {
                           />
                         </div>
 
+                        {/* Topics with individual boxes */}
                         <div className="mb-3">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Topics (comma-separated)
-                          </label>
-                          <input
-                            type="text"
-                            value={question.topics.join(', ')}
-                            onChange={(e) => updateCodingQuestion(roundIndex, questionIndex, 'topics', e.target.value.split(', ').filter(t => t.trim()))}
-                            placeholder="e.g., Array, Hash Table, Two Pointers"
-                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="block text-xs font-medium text-gray-700">
+                              Topics
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => addTopic(roundIndex, questionIndex)}
+                              className="flex items-center space-x-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>Add Topic</span>
+                            </button>
+                          </div>
+                          <div className="space-y-2">
+                            {question.topics.map((topic, topicIndex) => (
+                              <div key={topicIndex} className="flex items-center space-x-2">
+                                <input
+                                  type="text"
+                                  value={topic}
+                                  onChange={(e) => updateTopic(roundIndex, questionIndex, topicIndex, e.target.value)}
+                                  placeholder="e.g., Array, Hash Table"
+                                  className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeTopic(roundIndex, questionIndex, topicIndex)}
+                                  className="text-red-600 hover:text-red-700 transition-colors"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                            {question.topics.length === 0 && (
+                              <p className="text-xs text-gray-500">No topics added yet. Click "Add Topic" to add one.</p>
+                            )}
+                          </div>
                         </div>
 
                         {/* Platform Links */}

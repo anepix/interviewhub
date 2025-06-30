@@ -53,6 +53,7 @@ export const createDatabaseSchema = async () => {
         preparation_time VARCHAR(100),
         advice TEXT NOT NULL,
         salary_offered VARCHAR(100),
+        is_anonymous BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
@@ -148,6 +149,20 @@ export const createDatabaseSchema = async () => {
       )
     `);
 
+    // Website analytics table for developer tracking
+    await query(`
+      CREATE TABLE IF NOT EXISTS website_analytics (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        ip_address INET NOT NULL,
+        user_agent TEXT,
+        page_url TEXT NOT NULL,
+        referrer TEXT,
+        session_id VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
     // Create indexes for better performance
     await query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
     await query('CREATE INDEX IF NOT EXISTS idx_interview_experiences_user_id ON interview_experiences(user_id)');
@@ -159,6 +174,8 @@ export const createDatabaseSchema = async () => {
     await query('CREATE INDEX IF NOT EXISTS idx_interview_comments_experience_id ON interview_comments(experience_id)');
     await query('CREATE INDEX IF NOT EXISTS idx_interview_views_experience_id ON interview_views(experience_id)');
     await query('CREATE INDEX IF NOT EXISTS idx_otp_verifications_email ON otp_verifications(email)');
+    await query('CREATE INDEX IF NOT EXISTS idx_website_analytics_created_at ON website_analytics(created_at)');
+    await query('CREATE INDEX IF NOT EXISTS idx_website_analytics_ip_address ON website_analytics(ip_address)');
 
     console.log('✅ Database schema created successfully');
     return true;
@@ -251,7 +268,8 @@ export const checkDatabaseHealth = async () => {
       'interview_votes',
       'interview_comments',
       'interview_views',
-      'otp_verifications'
+      'otp_verifications',
+      'website_analytics'
     ];
     
     const tablesResult = await query(`

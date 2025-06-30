@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { InterviewExperience } from '../../types/database';
-import { X, Building, Calendar, User, Clock, Star, ExternalLink, Code2, Trophy, Target } from 'lucide-react';
+import { X, Building, Calendar, User, Clock, Star, ExternalLink, Code2, Trophy, Target, ThumbsUp, ThumbsDown, MessageCircle, Send } from 'lucide-react';
 import { format } from 'date-fns';
+import { useAuth } from '../../contexts/AuthContext';
+import api from '../../lib/api';
 
 interface ExperienceModalProps {
   experience: InterviewExperience;
@@ -10,7 +12,51 @@ interface ExperienceModalProps {
 }
 
 const ExperienceModal: React.FC<ExperienceModalProps> = ({ experience, isOpen, onClose }) => {
+  const { user } = useAuth();
+  const [votes, setVotes] = useState(experience.votes || []);
+  const [comments, setComments] = useState(experience.comments || []);
+  const [newComment, setNewComment] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isVoting, setIsVoting] = useState(false);
+
   if (!isOpen) return null;
+
+  const handleVote = async (voteType: 'upvote' | 'downvote') => {
+    if (!user || isVoting) return;
+
+    setIsVoting(true);
+    try {
+      await api.post(`/experiences/${experience.id}/vote`, { vote_type: voteType });
+      
+      // Refresh experience data to get updated vote counts
+      const response = await api.get(`/experiences/${experience.id}`);
+      setVotes(response.data.votes || []);
+    } catch (error) {
+      console.error('Error voting:', error);
+    } finally {
+      setIsVoting(false);
+    }
+  };
+
+  const handleComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !newComment.trim() || isSubmittingComment) return;
+
+    setIsSubmittingComment(true);
+    try {
+      const response = await api.post(`/experiences/${experience.id}/comment`, { 
+        content: newComment.trim() 
+      });
+      
+      // Add new comment to the list
+      setComments(prev => [response.data.comment, ...prev]);
+      setNewComment('');
+    } catch (error) {
+      console.error('Error adding comment:', error);
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
 
   const getPlatformData = (platform: string) => {
     switch (platform) {
@@ -121,10 +167,13 @@ const ExperienceModal: React.FC<ExperienceModalProps> = ({ experience, isOpen, o
     company: experience.company || { name: 'Unknown Company', logo_url: '', industry: '', id: '', created_at: '' },
     user: experience.user || { full_name: 'Anonymous', id: '', email: '', verified: false, created_at: '', updated_at: '' },
     rounds: experience.rounds || [],
-    votes: experience.votes || [],
-    comments: experience.comments || [],
+    votes: votes,
+    comments: comments,
     _count: experience._count || { votes: 0, comments: 0, views: 0 }
   };
+
+  const upvoteCount = votes.upvote || 0;
+  const downvoteCount = votes.downvote || 0;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -217,6 +266,100 @@ const ExperienceModal: React.FC<ExperienceModalProps> = ({ experience, isOpen, o
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Voting and Comments Section */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h4 className="text-xl font-bold text-gray-900">Community Interaction</h4>
+              <div className="flex items-center space-x-4">
+                {user && (
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => handleVote('upvote')}
+                      disabled={isVoting}
+                      className="flex items-center space-x-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
+                    >
+                      <ThumbsUp className="w-4 h-4" />
+                      <span>{upvoteCount}</span>
+                    </button>
+                    <button
+                      onClick={() => handleVote('downvote')}
+                      disabled={isVoting}
+                      className="flex items-center space-x-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
+                    >
+                      <ThumbsDown className="w-4 h-4" />
+                      <span>{downvoteCount}</span>
+                    </button>
+                  </div>
+                )}
+                <div className="flex items-center space-x-1 text-gray-600">
+                  <MessageCircle className="w-4 h-4" />
+                  <span>{comments.length} comments</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Add Comment Form */}
+            {user && (
+              <form onSubmit={handleComment} className="mb-6">
+                <div className="flex space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">
+                      {user.full_name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <textarea
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="Add a comment..."
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <div className="flex justify-end mt-2">
+                      <button
+                        type="submit"
+                        disabled={!newComment.trim() || isSubmittingComment}
+                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isSubmittingComment ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
+                        <span>{isSubmittingComment ? 'Posting...' : 'Post Comment'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {/* Comments List */}
+            <div className="space-y-4">
+              {comments.map((comment, index) => (
+                <div key={comment.id || index} className="flex space-x-3 p-4 bg-gray-50 rounded-lg">
+                  <div className="w-8 h-8 bg-gradient-to-r from-gray-400 to-gray-600 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">
+                      {comment.user_name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <span className="font-medium text-gray-900">{comment.user_name}</span>
+                      <span className="text-xs text-gray-500">
+                        {format(new Date(comment.created_at), 'MMM dd, yyyy')}
+                      </span>
+                    </div>
+                    <p className="text-gray-700">{comment.content}</p>
+                  </div>
+                </div>
+              ))}
+              {comments.length === 0 && (
+                <p className="text-gray-500 text-center py-4">No comments yet. Be the first to comment!</p>
+              )}
             </div>
           </div>
 

@@ -5,18 +5,63 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Track page view
+const trackView = async (experienceId, userId, ipAddress) => {
+  try {
+    // Check if this user/IP has already viewed this experience today
+    const existingView = await query(`
+      SELECT id FROM interview_views 
+      WHERE experience_id = $1 AND ip_address = $2 
+      AND created_at > NOW() - INTERVAL '24 hours'
+    `, [experienceId, ipAddress]);
+
+    if (existingView.rows.length === 0) {
+      await query(`
+        INSERT INTO interview_views (experience_id, user_id, ip_address)
+        VALUES ($1, $2, $3)
+      `, [experienceId, userId, ipAddress]);
+    }
+  } catch (error) {
+    console.error('Error tracking view:', error);
+  }
+};
+
+// Track website analytics
+const trackWebsiteAnalytics = async (req, userId = null) => {
+  try {
+    const ipAddress = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
+    const userAgent = req.get('User-Agent') || '';
+    const pageUrl = req.originalUrl;
+    const referrer = req.get('Referer') || '';
+    const sessionId = req.sessionID || '';
+
+    await query(`
+      INSERT INTO website_analytics (user_id, ip_address, user_agent, page_url, referrer, session_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [userId, ipAddress, userAgent, pageUrl, referrer, sessionId]);
+  } catch (error) {
+    console.error('Error tracking website analytics:', error);
+  }
+};
+
 // Get all experiences with filters
 router.get('/', async (req, res) => {
   try {
     const { search, result, company, page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
 
+    // Track website analytics
+    await trackWebsiteAnalytics(req, req.user?.id);
+
     console.log('Fetching experiences with filters:', { search, result, company, page, limit });
 
     let queryText = `
       SELECT 
         ie.*,
-        u.full_name as user_name,
+        CASE 
+          WHEN ie.is_anonymous = true THEN 'Anonymous'
+          ELSE u.full_name
+        END as user_name,
         u.year_of_passing,
         u.branch,
         c.name as company_name,
@@ -134,14 +179,21 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const ipAddress = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
 
     console.log('Fetching experience details for ID:', id);
+
+    // Track view
+    await trackView(id, req.user?.id, ipAddress);
 
     // Get experience with user and company details
     const experienceResult = await query(`
       SELECT 
         ie.*,
-        u.full_name as user_name,
+        CASE 
+          WHEN ie.is_anonymous = true THEN 'Anonymous'
+          ELSE u.full_name
+        END as user_name,
         u.year_of_passing,
         u.branch,
         c.name as company_name,
@@ -210,9 +262,15 @@ router.get('/:id', async (req, res) => {
 
     // Get comments
     const commentsResult = await query(`
-      SELECT ic.*, u.full_name as user_name
+      SELECT 
+        ic.*,
+        CASE 
+          WHEN ie.is_anonymous = true THEN 'Anonymous'
+          ELSE u.full_name
+        END as user_name
       FROM interview_comments ic
       JOIN users u ON ic.user_id = u.id
+      JOIN interview_experiences ie ON ic.experience_id = ie.id
       WHERE ic.experience_id = $1
       ORDER BY ic.created_at DESC
     `, [id]);
@@ -280,6 +338,7 @@ router.post('/', authenticateToken, [
       preparation_time,
       advice,
       salary_offered,
+      is_anonymous = false,
       rounds = []
     } = req.body;
 
@@ -301,13 +360,13 @@ router.post('/', authenticateToken, [
         INSERT INTO interview_experiences (
           user_id, company_id, position, experience_level, experience_years,
           interview_date, result, overall_rating, difficulty_level,
-          interview_process, preparation_time, advice, salary_offered
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          interview_process, preparation_time, advice, salary_offered, is_anonymous
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING *
       `, [
         req.user.id, company_id, position, experience_level, experience_years,
         interview_date, result, overall_rating, difficulty_level,
-        interview_process, preparation_time, advice, salary_offered
+        interview_process, preparation_time, advice, salary_offered, is_anonymous
       ]);
 
       const experience = experienceResult.rows[0];
@@ -378,6 +437,117 @@ router.post('/', authenticateToken, [
     console.error('Create experience error:', error);
     res.status(500).json({ 
       error: 'Failed to create experience',
+      details: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+});
+
+// Vote on experience
+router.post('/:id/vote', authenticateToken, [
+  body('vote_type').isIn(['upvote', 'downvote']).withMessage('Valid vote type is required'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        error: errors.array()[0].msg,
+        errors: errors.array() 
+      });
+    }
+
+    const { id } = req.params;
+    const { vote_type } = req.body;
+
+    // Check if experience exists
+    const experienceCheck = await query('SELECT id FROM interview_experiences WHERE id = $1', [id]);
+    if (experienceCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Experience not found' });
+    }
+
+    // Check if user has already voted
+    const existingVote = await query(
+      'SELECT id, vote_type FROM interview_votes WHERE experience_id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+
+    if (existingVote.rows.length > 0) {
+      const currentVote = existingVote.rows[0];
+      
+      if (currentVote.vote_type === vote_type) {
+        // Remove vote if same type
+        await query('DELETE FROM interview_votes WHERE id = $1', [currentVote.id]);
+        return res.json({ message: 'Vote removed' });
+      } else {
+        // Update vote if different type
+        await query(
+          'UPDATE interview_votes SET vote_type = $1 WHERE id = $2',
+          [vote_type, currentVote.id]
+        );
+        return res.json({ message: 'Vote updated' });
+      }
+    } else {
+      // Create new vote
+      await query(
+        'INSERT INTO interview_votes (experience_id, user_id, vote_type) VALUES ($1, $2, $3)',
+        [id, req.user.id, vote_type]
+      );
+      return res.json({ message: 'Vote added' });
+    }
+  } catch (error) {
+    console.error('Vote error:', error);
+    res.status(500).json({ 
+      error: 'Failed to process vote',
+      details: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+});
+
+// Comment on experience
+router.post('/:id/comment', authenticateToken, [
+  body('content').trim().notEmpty().withMessage('Comment content is required'),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        error: errors.array()[0].msg,
+        errors: errors.array() 
+      });
+    }
+
+    const { id } = req.params;
+    const { content } = req.body;
+
+    // Check if experience exists
+    const experienceCheck = await query('SELECT id FROM interview_experiences WHERE id = $1', [id]);
+    if (experienceCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Experience not found' });
+    }
+
+    // Create comment
+    const commentResult = await query(`
+      INSERT INTO interview_comments (experience_id, user_id, content)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `, [id, req.user.id, content]);
+
+    const comment = commentResult.rows[0];
+
+    // Get user details for response
+    const userResult = await query('SELECT full_name FROM users WHERE id = $1', [req.user.id]);
+    const user = userResult.rows[0];
+
+    res.status(201).json({
+      message: 'Comment added successfully',
+      comment: {
+        ...comment,
+        user_name: user.full_name
+      }
+    });
+  } catch (error) {
+    console.error('Comment error:', error);
+    res.status(500).json({ 
+      error: 'Failed to add comment',
       details: process.env.NODE_ENV !== 'production' ? error.message : undefined
     });
   }
